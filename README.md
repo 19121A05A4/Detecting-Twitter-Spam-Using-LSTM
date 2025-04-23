@@ -131,3 +131,6 @@ python tweetsanalysis.py
 
 streamlit run streamlit_app.py
 
+
+
+[Click here to read the full case study](Case_Study.md)
