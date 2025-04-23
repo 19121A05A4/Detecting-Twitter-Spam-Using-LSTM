@@ -2,76 +2,76 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import tensorflow as tf
-import json
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+import json
 
-# Load dataset
-df = pd.read_csv("spam.csv", encoding='latin-1')
-df = df[['v1', 'v2']]              # Keep only necessary columns
-df.columns = ['label', 'text']     # Rename for clarity
-df['label'] = df['label'].map({'ham': 0, 'spam': 1})  # Encode labels
+# Load and prepare data
+data = pd.read_csv("spam.csv", encoding="latin-1")
+data = data[['v1', 'v2']]
+data.columns = ['label', 'text']
 
-# Preprocessing
-texts = df['text'].astype(str).tolist()
-labels = df['label'].tolist()
+# Encode labels
+le = LabelEncoder()
+data['label'] = le.fit_transform(data['label'])
 
-# Tokenize
-tokenizer = Tokenizer(oov_token='<OOV>')
-tokenizer.fit_on_texts(texts)
-sequences = tokenizer.texts_to_sequences(texts)
-max_len = 100
-padded = pad_sequences(sequences, maxlen=max_len, padding='post')
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(
+    data['text'], data['label'], test_size=0.2, random_state=42)
+
+# Tokenization
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(X_train)
+vocab_size = len(tokenizer.word_index) + 1
 
 # Save tokenizer
-with open('tokenizer.json', 'w') as f:
-    f.write(json.dumps(tokenizer.to_json()))
+with open("tokenizer.json", "w") as f:
+    json.dump(tokenizer.to_json(), f)
 
-# Split
-X_train, X_test, y_train, y_test = train_test_split(padded, labels, test_size=0.2, random_state=42)
+maxlen = 100
+X_train_seq = pad_sequences(tokenizer.texts_to_sequences(X_train), maxlen=maxlen)
+X_test_seq = pad_sequences(tokenizer.texts_to_sequences(X_test), maxlen=maxlen)
 
-# Build model
-model = tf.keras.Sequential([
-    tf.keras.layers.Embedding(input_dim=10000, output_dim=16, input_length=max_len),
-    tf.keras.layers.GlobalAveragePooling1D(),
-    tf.keras.layers.Dense(24, activation='relu'),
-    tf.keras.layers.Dense(1, activation='sigmoid')
+# Model
+model = Sequential([
+    Embedding(vocab_size, 64, input_length=maxlen),
+    LSTM(64),
+    Dense(1, activation='sigmoid')
 ])
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
 # Train
-history = model.fit(np.array(X_train), np.array(y_train), epochs=10, validation_data=(X_test, y_test))
+history = model.fit(X_train_seq, y_train, epochs=10, validation_data=(X_test_seq, y_test))
 
 # Save model
-model.save('model.h5')
+model.save("model.h5")
 
-# Visualize training
-plt.figure(figsize=(12, 4))
+# Plot Accuracy & Loss
+plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.plot(history.history['accuracy'], label='Train Acc')
 plt.plot(history.history['val_accuracy'], label='Val Acc')
+plt.title('Accuracy')
 plt.legend()
-plt.title("Accuracy")
 
 plt.subplot(1, 2, 2)
 plt.plot(history.history['loss'], label='Train Loss')
 plt.plot(history.history['val_loss'], label='Val Loss')
+plt.title('Loss')
 plt.legend()
-plt.title("Loss")
-plt.tight_layout()
 plt.show()
 
 # Confusion Matrix
-y_pred = (model.predict(X_test) > 0.5).astype("int32")
+y_pred = (model.predict(X_test_seq) > 0.5).astype("int32")
 cm = confusion_matrix(y_test, y_pred)
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Ham', 'Spam'], yticklabels=['Ham', 'Spam'])
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
+plt.figure(figsize=(6, 5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
 plt.title("Confusion Matrix")
 plt.show()
-
-# Report
-print(classification_report(y_test, y_pred, target_names=['Ham', 'Spam']))
